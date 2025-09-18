@@ -1,0 +1,196 @@
+#include "Talkie.h"
+#include "Vocab_ID_Large.h"
+Talkie voice;
+
+#include <math.h>
+
+#define OutputOpampPin A0
+#define R_FIXED 10000.0    // 10k resistor in series with thermistor
+#define VCC 5.0            // Supply voltage
+
+// Beta equation parameters for MF52AT thermistor
+#define BETA 3950.0
+#define T0 298.15          // 25°C in Kelvin
+#define R0 10000.0         // Resistance at 25°C in ohms
+
+const float ReferencePrecision1 = 0.07;
+const float ReferencePrecision2 = 0.01;
+
+int Buf[10];
+int Temporary;
+int Count1;
+int Count2;
+int Count3;
+int IntegerPart;
+int DecimalPart;
+float Temperature;
+float Temperature_1;
+float Temperature_2;
+float MilivoltValue[100];
+float TemperatureValue[100];
+
+const uint8_t sp2_TEMPERATURE[] PROGMEM = {0x00,0x00,0xC0,0xC0,0x61,0x4F,0x25,0xD5,0x89,0x02,0x87,0x69,0xCB,0x4C,0xBB,0x0A,0x1C,0x6E,0x25,0xD2,0xAD,0x28,0x70,0xF8,0xD2,0xB0,0xB0,0x63,0xC0,0x61,0x4B,0xD2,0xDC,0x89,0x03,0xA6,0x4D,0x35,0xE0,0x4C,0xCD,0x99,0x96,0xC4,0x00,0x23,0xAE,0x88,0xA9,0x85,0x94,0x2E,0x8F,0x83,0xDC,0x16,0xCB,0x23,0x5C,0xB6,0x01,0xC3,0xE4,0x74,0x2D,0xDB,0x42,0xF3,0xC2,0x23,0xB5,0x98,0x12,0xA2,0x85,0x60,0x0E,0x96,0x1D,0x80,0x99,0x22,0x0F,0x59,0x79,0x65,0xB5,0x46,0x5E,0x44,0x55,0x99,0x51,0x6E,0x77,0x11,0x25,0xB8,0xE5,0x70,0x9C,0x20,0x07,0x2F,0x1E,0x5D,0x6D,0x82,0xEC,0x9D,0x45,0x77,0xD4,0x31,0x72,0xD5,0x66,0xE6,0x19,0x47,0xA1,0xCD,0xB9,0x65,0x79,0x9C,0x81,0xA5,0x1A,0x3E,0x4D,0x4A,0x07,0x96,0xAA,0x67,0xB5,0x39,0x4A,0x78,0x5F,0x9E,0x1C,0x99,0x78,0x10,0xA9,0x59,0x79,0x99,0xA3,0x41,0xE5,0x96,0xB9,0xAA,0x72,0x06,0x5B,0x4A,0xFA,0xA9,0x25,0x2A,0x60,0x8A,0xA3,0xE7,0x96,0x50,0x75,0x35,0xBB,0x9F,0x97,0x13,0x07,0x8C,0xB8,0x2A,0xE6,0x5A,0xC2,0xBB,0x22,0x35,0xF2,0x6B,0x49,0xDB,0x28,0x27,0x48,0xA9,0xB9,0xA2,0x22,0xE3,0x24,0x2D,0xEA,0x71,0xAD,0x72,0x1C,0x74,0xD3,0x53,0xB5,0xD3,0x8D,0x33,0xEC,0x08,0xB6,0xB5,0xC6,0xCE,0x8C,0xAD,0x98,0x2E,0x54,0x25,0x2B,0xA5,0x14,0xDF,0xA0,0x13,0x9C,0x5A,0x5A,0x34,0x3D,0x6A,0xB2,0xEA,0x30,0xF5,0x88,0x34,0x49,0x1B,0x71,0xCB,0x54,0x92,0x3A,0x68,0xC4,0x2B,0x37,0x93,0x2D,0xFC,0xDE,0x27,0xC3,0x2D,0xB5,0xF2,0x7B,0x9F,0x4A,0xE3,0xA4,0xA6,0x1B,0x75,0xBA,0x42,0xE2,0xAA,0xA4,0xB7,0x49,0x8F,0x6C,0x22,0x92,0x1E,0xCB,0x3A,0x43,0x0D,0x49,0xBA,0x4B,0x8B,0x4A,0xBB,0x44,0x9C,0x3E,0xBD,0x22,0xD5,0x10,0x6E,0x98,0x8A,0xA8,0x74,0x4D,0x80,0xA9,0x23,0x89,0x37,0x74,0xB6,0x45,0x3A,0x22,0xEC,0x30,0x93,0x66,0x95,0x98,0x08,0xC3,0xA6,0x87,0xA7,0x6D,0xA4,0x4C,0x3D,0x1E,0x61,0x71,0x11,0x3F,0x6C,0x67,0x84,0x39,0x7E,0x40,0x97,0x61
+};
+
+
+
+
+void (*FuncReset)() = 0;
+
+void sayNumber(long n) {
+  IntegerPart = n;
+  if (n < 0) {
+    voice.say(sp2_MINUS_ID);
+    sayNumber(-n);
+  } else if (n == 0) {
+    voice.say(sp2_NOL);
+  } else {
+    if (n >= 1000) {
+      int thousands = n / 1000;
+      sayNumber(thousands);
+      voice.say(sp2_RIBU);
+      n %= 1000;
+     
+    }
+    if (n >= 100) {
+      int hundreds = n / 100;
+      sayNumber(hundreds);
+      voice.say(sp2_RATUS);
+      n %= 100;
+
+    }
+    if (n > 19) {
+      int tens = n / 10;
+      switch (tens) {
+        case 2: voice.say(sp2_DUAPULUH); break;
+        case 3: voice.say(sp2_TIGAPULUH); break;
+        case 4: voice.say(sp2_EMPATPULUH); break;
+        case 5: voice.say(sp2_LIMAPULUH); break;
+        case 6: voice.say(sp2_ENAMPULUH); break;
+        case 7: voice.say(sp2_TUJUHPULUH);break;
+        case 8: voice.say(sp2_DELAPANPULUH); break;
+        case 9: voice.say(sp2_SEMBILANPULUH); break;
+      }
+      n %= 10;
+    }
+    switch (n) {
+      case 1: voice.say(sp2_SATU); break;
+      case 2: voice.say(sp2_DUA); break;
+      case 3: voice.say(sp2_TIGA); break;
+      case 4: voice.say(sp2_EMPAT); break;
+      case 5: voice.say(sp2_LIMA_ID); break;
+      case 6: voice.say(sp2_ENAM); break;
+      case 7: voice.say(sp2_TUJUH); break;
+      case 8: voice.say(sp2_DELAPAN); break;
+      case 9: voice.say(sp2_SEMBILAN); break;
+      case 10: voice.say(sp2_SEPULUH); break;
+      case 11: voice.say(sp2_SEBELAS); break;
+      case 12: voice.say(sp2_DUABELAS); break;
+      case 13: voice.say(sp2_TIGABELAS); break;
+      case 14: voice.say(sp2_EMPATBELAS); break;
+      case 15: voice.say(sp2_LIMABELAS); break;
+      case 16: voice.say(sp2_ENAMBELAS); break;
+      case 17: voice.say(sp2_TUJUHBELAS); break;
+      case 18: voice.say(sp2_DELAPANBELAS); break;
+      case 19: voice.say(sp2_SEMBILANBELAS); break;
+    }
+  }
+}
+
+void SayTemperature() {
+  voice.say(sp2_TEMPERATURE);
+  sayNumber((long)Temperature);
+
+  if (Temperature > IntegerPart) {
+    DecimalPart = (Temperature - IntegerPart) * 100;
+    voice.say(sp2_KOMA);
+    sayNumber(DecimalPart);
+  }
+
+  voice.say(sp2_CELSIUS);
+}
+
+void Temperature01() {
+  if (TemperatureValue[Count3 - 1] - TemperatureValue[Count3] > ReferencePrecision1) {
+    Temperature_1 = TemperatureValue[Count3 - 1];
+    Serial.print("Temperature 1 = ");
+    Serial.println(Temperature_1);
+    Temperature = Temperature_1;
+    SayTemperature();
+  }
+}
+
+void Temperature02() {
+  if (TemperatureValue[Count3 - 1] - TemperatureValue[Count3 - 2] > ReferencePrecision2) {
+    Temperature_2 = TemperatureValue[Count3 - 2];
+    Serial.print("Temperature 2 = ");
+    Serial.println(Temperature_2);
+    Temperature = Temperature_2;
+    SayTemperature();
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Ready");
+  Count3 = 1;
+  TemperatureValue[0] = 0;
+}
+
+void loop() {
+  for (Count1 = 0; Count1 < 10; Count1++) {
+    Buf[Count1] = analogRead(OutputOpampPin);
+    delay(10);
+  }
+
+  // Sort and average the middle 6 values
+  for (Count1 = 0; Count1 < 9; Count1++) {
+    for (Count2 = Count1 + 1; Count2 < 10; Count2++) {
+      if (Buf[Count1] > Buf[Count2]) {
+        Temporary = Buf[Count1];
+        Buf[Count1] = Buf[Count2];
+        Buf[Count2] = Temporary;
+      }
+    }
+  }
+
+  unsigned long SumValue = 0;
+  for (Count1 = 2; Count1 < 8; Count1++) {
+    SumValue += Buf[Count1];
+  }
+
+  MilivoltValue[Count3] = (float)SumValue * 5000.0 / 1024.0 / 6.0; // mV
+
+  // Convert to resistance
+  float Vout = MilivoltValue[Count3] / 1000.0; // in volts
+  float R_thermistor = R_FIXED * Vout / (VCC - Vout);
+
+  // Beta equation
+  float Temperature_K = 1.0 / ((1.0 / BETA) * log(R_thermistor / R0) + (1.0 / T0));
+  TemperatureValue[Count3] = Temperature_K - 273.15;
+
+  Serial.print(Count3);
+  Serial.print("  ");
+  Serial.print(MilivoltValue[Count3]);
+  Serial.print(" mV  ");
+  Serial.print(TemperatureValue[Count3]);
+  Serial.println(" °C");
+
+  if (TemperatureValue[Count3] < -25) {
+    delay(1000);
+    FuncReset();
+  }
+
+  if (Count3 > 1 && TemperatureValue[Count3 - 1] > TemperatureValue[Count3]) {
+    Temperature01();
+  } else if (Count3 > 2 && TemperatureValue[Count3 - 2] < TemperatureValue[Count3 - 1] && TemperatureValue[Count3 - 1] < TemperatureValue[Count3]) {
+    Temperature02();
+  }
+
+  delay(900);
+  Count3++;
+
+  if (Count3 == 100) {
+    FuncReset();
+  }
+}
